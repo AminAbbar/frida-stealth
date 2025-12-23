@@ -34,6 +34,13 @@ jobs:
         with:
           python-version: "3.10"
 
+      # 4. Setup Node.js (Required by Frida build system)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+
       - name: Install Python deps
         run: pip install lief
 
@@ -48,7 +55,17 @@ jobs:
           git clone --recurse-submodules https://github.com/frida/frida.git
           cd frida
           git checkout $(git tag --sort=-v:refname | head -n 1)
-
+      # 7. Apply Patches
+      - name: Apply Patches
+        run: |
+          # Patch frida-core
+          cd frida/subprojects/frida-core
+          git apply --reject --whitespace=fix ${{ github.workspace }}/stealth-repo/frida-core/patch.patch
+          
+          # Patch frida-gum
+          cd ../frida-gum
+          git apply --reject --whitespace=fix --exclude='tests/*' ${{ github.workspace }}/stealth-repo/frida-gum/patch.patch
+          
       - name: Apply Stealth Patches
         run: |
           python stealth/apply-stealth.py \
