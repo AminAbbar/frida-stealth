@@ -57,9 +57,10 @@ jobs:
             --port-cluster "${{ inputs.port_cluster }}"
 
       - name: Build Frida (Android arm64)
-        env:
-          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
+          export ANDROID_NDK_ROOT="${{ steps.setup-ndk.outputs.ndk-path }}"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
+       
           cd frida
           make core-android-arm64
 
