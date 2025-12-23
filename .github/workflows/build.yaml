@@ -51,7 +51,7 @@ jobs:
 
       - name: Apply Stealth Patches
         run: |
-          python apply-stealth.py \
+          python stealth/apply-stealth.py \
             --prefix "${{ inputs.prefix }}" \
             --port-control "${{ inputs.port_control }}" \
             --port-cluster "${{ inputs.port_cluster }}"
