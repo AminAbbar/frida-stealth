@@ -4,33 +4,42 @@ on:
   workflow_dispatch:
     inputs:
       prefix:
+        description: "Stealth prefix (e.g. Banana)"
         default: Banana
       port_control:
-        default: '27043'
+        description: "Control port"
+        default: "27043"
       port_cluster:
-        default: '27053'
+        description: "Cluster port"
+        default: "27053"
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
         with:
           docker-images: true
           large-packages: true
 
-      - uses: actions/checkout@v4
+      - name: Checkout stealth repo
+        uses: actions/checkout@v4
         with:
           path: stealth
 
-      - uses: actions/setup-python@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      - run: pip install lief
+      - name: Install Python deps
+        run: pip install lief
 
-      - uses: nttld/setup-ndk@v1
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
           ndk-version: r25c
 
@@ -38,33 +47,37 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/frida/frida.git
           cd frida
-          git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
+          git checkout $(git tag --sort=-v:refname | head -n 1)
 
       - name: Apply Stealth Patches
         run: |
-          python stealth/apply_stealth.py \
+          python stealth/apply-stealth.py \
             --prefix "${{ inputs.prefix }}" \
             --port-control "${{ inputs.port_control }}" \
             --port-cluster "${{ inputs.port_cluster }}"
 
-      - name: Build Android arm64
+      - name: Build Frida (Android arm64)
         env:
-          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cd frida
           make core-android-arm64
 
-      - name: Obfuscate
+      - name: Obfuscate binaries
         run: |
           cd frida
-          python src/anti-anti-frida.py \
-            build/tmp-android-arm64/frida-core/lib/agent/frida-agent.so \
-            build/tmp-android-arm64/frida-core/lib/gadget/frida-gadget.so \
-            build/frida-android-arm64/bin/frida-server \
-            build/frida-android-arm64/bin/frida-inject \
-            build/frida-android-arm64/bin/frida-portal
 
-      - name: Upload
+          AAF="subprojects/frida-core/src/anti-anti-frida.py"
+
+          AGENT=$(find build -name "*agent*.so" | head -n 1)
+          GADGET=$(find build -name "*gadget*.so" | head -n 1)
+          SERVER=$(find build -name "*server" | head -n 1)
+          INJECT=$(find build -name "*inject" | head -n 1)
+          PORTAL=$(find build -name "*portal" | head -n 1)
+
+          python "$AAF" $AGENT $GADGET $SERVER $INJECT $PORTAL
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: stealth-frida-latest-arm64
