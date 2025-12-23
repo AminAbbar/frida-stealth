@@ -1,38 +1,39 @@
-name: Build Stealth Frida (Latest)
+name: Build Stealth Frida 16.2.2
 
 on:
-  workflow_dispatch:
-    inputs:
-      prefix:
-        description: "Stealth prefix (e.g. Banana)"
-        default: Banana
-      port_control:
-        description: "Control port"
-        default: "27043"
-      port_cluster:
-        description: "Cluster port"
-        default: "27053"
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  build:
+  build-android-arm64:
     runs-on: ubuntu-22.04
-
+    
     steps:
-      - name: Free disk space
+      # 1. Clean up disk space
+      - name: Free Disk Space
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
-          docker-images: true
+          tool-cache: false
+          android: false # We need Android, but we will install specific NDK later
+          dotnet: true
+          haskell: true
           large-packages: true
+          docker-images: true
+          swap-storage: true
 
-      - name: Checkout stealth repo
+      # 2. Checkout your repo (containing patches and python script)
+      - name: Checkout Stealth Repo
         uses: actions/checkout@v4
         with:
-          path: stealth
+          path: stealth-repo
 
+      # 3. Setup Python for the obfuscation script
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: '3.10' 
+
+      - name: Install Python Dependencies
+        run: pip install lief
 
       # 4. Setup Node.js (Required by Frida build system)
       - name: Setup Node.js
@@ -40,22 +41,19 @@ jobs:
         with:
           node-version: '20'
 
-
-      - name: Install Python deps
-        run: pip install lief
-
+      # 5. Install specific NDK version (25.2.9519653)
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r25c
+          ndk-version: r25c # r25c maps to 25.2.9519653
 
       - name: Clone latest Frida
         run: |
           git clone --recurse-submodules https://github.com/frida/frida.git
           cd frida
           git checkout $(git tag --sort=-v:refname | head -n 1)
-      # 7. Apply Patches
+
       - name: Apply Patches
         run: |
           # Patch frida-core
@@ -66,13 +64,6 @@ jobs:
           cd ../frida-gum
           git apply --reject --whitespace=fix --exclude='tests/*' ${{ github.workspace }}/stealth-repo/frida-gum/patch.patch
           
-      - name: Apply Stealth Patches
-        run: |
-          python stealth/apply-stealth.py \
-            --prefix "${{ inputs.prefix }}" \
-            --port-control "${{ inputs.port_control }}" \
-            --port-cluster "${{ inputs.port_cluster }}"
-
       - name: Disable Frida Gum Tests
         run: |
           # This command comments out "subdir('tests')" in the build file.
@@ -87,24 +78,46 @@ jobs:
           ./configure --host=android-arm64
           cd build
           ninja
-
-
-      - name: Obfuscate binaries
+      # 9. Run Anti-Anti-Frida (Symbol Hiding)
+      - name: Obfuscate Symbols
         run: |
-          cd frida
-
-          AAF="subprojects/frida-core/src/anti-anti-frida.py"
-
-          AGENT=$(find build -name "*agent*.so" | head -n 1)
-          GADGET=$(find build -name "*gadget*.so" | head -n 1)
-          SERVER=$(find build -name "*server" | head -n 1)
-          INJECT=$(find build -name "*inject" | head -n 1)
-          PORTAL=$(find build -name "*portal" | head -n 1)
-
-          python "$AAF" $AGENT $GADGET $SERVER $INJECT $PORTAL
-
-      - name: Upload artifacts
+          BUILD_ROOT="frida/build"
+          SCRIPT="frida/subprojects/frida-core/src/anti-anti-frida.py"
+          
+          echo "Locating binaries..."
+          
+          # Automatically find the files to avoid path errors
+          # We use 'head -n 1' to take the first match if duplicates exist
+          AGENT=$(find $BUILD_ROOT -name "frida-agent.so" | grep "subprojects/frida-core" | head -n 1)
+          GADGET=$(find $BUILD_ROOT -name "frida-gadget.so" | grep "subprojects/frida-core" | head -n 1)
+          SERVER=$(find $BUILD_ROOT -name "frida-server" | grep "subprojects/frida-core" | head -n 1)
+          INJECT=$(find $BUILD_ROOT -name "frida-inject" | grep "subprojects/frida-core" | head -n 1)
+          PORTAL=$(find $BUILD_ROOT -name "frida-portal" | grep "subprojects/frida-core" | head -n 1)
+          
+          echo "Found:"
+          echo "AGENT: $AGENT"
+          echo "GADGET: $GADGET"
+          echo "SERVER: $SERVER"
+          echo "INJECT: $INJECT"
+          echo "PORTAL: $PORTAL"
+          
+          # Run the obfuscation
+          #python "$SCRIPT" $AGENT $GADGET $INJECT $PORTAL $SERVER
+          mkdir -p stealth-artifacts
+          for f in "$AGENT" "$GADGET" "$SERVER" "$INJECT" "$PORTAL"; do
+            if [ -n "$f" ] && [ -f "$f" ]; then
+               echo "Copying $f..."
+               cp "$f" stealth-artifacts/
+            else
+               echo "Skipping missing file (was empty or not found)"
+            fi
+          done
+          
+          echo "Contents of artifacts folder:"
+          ls -lh stealth-artifacts/
+      # 10. Upload Artifacts
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: stealth-frida-latest-arm64
-          path: frida/build/**/*
+          name: frida-stealth-16.2.2-arm64
+          path: stealth-artifacts/*
