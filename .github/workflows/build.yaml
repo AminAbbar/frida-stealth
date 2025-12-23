@@ -1,0 +1,71 @@
+name: Build Stealth Frida (Latest)
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        default: Banana
+      port_control:
+        default: '27043'
+      port_cluster:
+        default: '27053'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          docker-images: true
+          large-packages: true
+
+      - uses: actions/checkout@v4
+        with:
+          path: stealth
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - run: pip install lief
+
+      - uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+
+      - name: Clone latest Frida
+        run: |
+          git clone --recurse-submodules https://github.com/frida/frida.git
+          cd frida
+          git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
+
+      - name: Apply Stealth Patches
+        run: |
+          python stealth/apply_stealth.py \
+            --prefix "${{ inputs.prefix }}" \
+            --port-control "${{ inputs.port_control }}" \
+            --port-cluster "${{ inputs.port_cluster }}"
+
+      - name: Build Android arm64
+        env:
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_HOME }}
+        run: |
+          cd frida
+          make core-android-arm64
+
+      - name: Obfuscate
+        run: |
+          cd frida
+          python src/anti-anti-frida.py \
+            build/tmp-android-arm64/frida-core/lib/agent/frida-agent.so \
+            build/tmp-android-arm64/frida-core/lib/gadget/frida-gadget.so \
+            build/frida-android-arm64/bin/frida-server \
+            build/frida-android-arm64/bin/frida-inject \
+            build/frida-android-arm64/bin/frida-portal
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: stealth-frida-latest-arm64
+          path: frida/build/**/*
