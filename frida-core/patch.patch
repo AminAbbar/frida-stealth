@@ -324,7 +324,7 @@ index a8db6b29..8ea740fa 100644
  
  			void * main_func_symbol;
 -			var main_func_found = container.module.symbol ("frida_agent_main", out main_func_symbol);
-+			var main_func_found = container.module.symbol ("banana_main", out main_func_symbol);
++			var main_func_found = container.module.symbol ("frida_agent_main", out main_func_symbol);
  			assert (main_func_found);
  			container.main_impl = (AgentMainFunc) main_func_symbol;
  
@@ -361,7 +361,7 @@ index 00000000..47e321f6
 +    for symbol in binary.symbols:
 +        if symbol.name == "frida_agent_main":
 +            print(symbol.name)
-+            symbol.name = "banana_main"
++            symbol.name = "frida_agent_main"
 +        
 +        if "frida" in symbol.name:
 +            symbol.name = symbol.name.replace("frida", random_name)
@@ -573,7 +573,7 @@ index 50470ac8..2447664f 100644
  				Cancellable? cancellable, out Object? transport) throws Error, IOError {
  			uint id;
 -			string entrypoint = "frida_agent_main";
-+			string entrypoint = "banana_main"; 
++			string entrypoint = "frida_agent_main"; 
  			string parameters = make_agent_parameters (pid, "", options);
  			AgentFeatures features = CONTROL_CHANNEL;
  			var linjector = (Linjector) injector;
