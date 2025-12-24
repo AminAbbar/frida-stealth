@@ -48,12 +48,12 @@ jobs:
         with:
           ndk-version: r25c # r25c maps to 25.2.9519653
 
-      - name: Clone latest Frida
+      # 6. Clone Frida 16.2.2
+      - name: Clone Frida (v16.2.2)
         run: |
-          git clone --recurse-submodules https://github.com/frida/frida.git
-          cd frida
-          git checkout $(git tag --sort=-v:refname | head -n 1)
+          git clone --recurse-submodules --branch 16.2.2 https://github.com/frida/frida.git frida
 
+      # 7. Apply Patches
       - name: Apply Patches
         run: |
           # Patch frida-core
@@ -69,6 +69,7 @@ jobs:
           # This command comments out "subdir('tests')" in the build file.
           # This prevents the compiler from trying to build the broken tests.
           sed -i "s/subdir('tests')/# subdir('tests')/g" frida/subprojects/frida-gum/meson.build
+
       # 8. Build Frida
       - name: Build Core (Android Arm64)
         env:
@@ -78,6 +79,7 @@ jobs:
           ./configure --host=android-arm64
           cd build
           ninja
+
       # 9. Run Anti-Anti-Frida (Symbol Hiding)
       - name: Obfuscate Symbols
         run: |
@@ -103,7 +105,9 @@ jobs:
           
           # Run the obfuscation
           #python "$SCRIPT" $AGENT $GADGET $INJECT $PORTAL $SERVER
+
           mkdir -p stealth-artifacts
+
           for f in "$AGENT" "$GADGET" "$SERVER" "$INJECT" "$PORTAL"; do
             if [ -n "$f" ] && [ -f "$f" ]; then
                echo "Copying $f..."
